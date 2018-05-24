@@ -1,1 +1,93 @@
 
+//code by Ancilleno Davis
+// Center the map on the outline of Grand Bahama.
+Map.centerObject(GB, 11);
+
+//find LANDSAT images for the island of Grand Bahama
+var l8 = ee.ImageCollection('LANDSAT/LC08/C01/T1');
+var spatialFiltered = l8.filterBounds(GB);
+print('spatialFiltered', spatialFiltered);
+
+//find the images taken in 2014
+var temporalFiltered = spatialFiltered.filterDate('2014-01-01', '2014-12-31');
+print('temporalFiltered', temporalFiltered);
+
+//83 images are available from LANDSAT 8 for the island of Grand Bahama in 2014 and are now included in the variable temporalFiltered 
+
+// Also filter the collection by the IMAGE_QUALITY_OLI property.
+var highqualityOLI = temporalFiltered
+  .filterMetadata('IMAGE_QUALITY_OLI', 'equals', 9);
+print('highqualityOLI', highqualityOLI);
+
+// Also filter the collection by the IMAGE_QUALITY_OLI property.
+var highqualityTIRS = temporalFiltered
+  .filterMetadata('IMAGE_QUALITY_TIRS', 'equals', 9);
+print('highqualityTIRS', highqualityTIRS);
+//There is no difference in the data when filtered for high quality so I continue with the variable temporalFiltered
+
+// Also filter the collection by the CLOUD_COVER_LAND property.
+var noclouds = temporalFiltered
+  .filterMetadata('CLOUD_COVER_LAND', 'less_than', 3);
+print('noclouds', noclouds);
+
+
+// Center the map on the outline of Grand Bahama.
+Map.centerObject(GB, 11);
+
+// Load an image.
+var image = ee.Image('LANDSAT/LC08/C01/T1_TOA/LC08_044034_20140318');
+
+// Define the visualization parameters.
+var vizParams = {
+  bands: ['B4', 'B3', 'B2'],
+  min: (100, 100,100),
+  max: (10376, 13674,13674),
+  gamma: [0.95, 1.1, 1]
+};
+
+
+Map.addLayer(noclouds, vizParams, 'true color composite');
+
+//Supervised classification
+
+//merge the feature collections already created using the new geometry tool.
+
+// Merge pine, coppice, wetland, Mangrove and urban points together
+var newfc = pine.merge(coppice).merge(wetland).merge(mangrove).merge(urban).merge(sand).merge(casuarina).merge(water);
+print(newfc, 'newfc')
+
+// Select the bands to be used in training
+var bands = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7'];
+
+// Sample the input imagery to get a FeatureCollection of training data.
+var training = image.select(bands).sampleRegions({
+  collection: newfc,
+  properties: ['landcover'],
+  scale: 11  
+});
+
+// Make a classifier and train it.
+var randomforestclassifier = ee.Classifier.randomForest().train({
+  features: training,
+  classProperty: 'landcover',
+  inputProperties: bands
+});
+
+// Classify the input imagery.
+var classified = image.select(bands).classify(classifier);
+
+// Define a palette for the Land Use classification.
+var palette = [
+  'D3D3D3', // pine (1)
+  '0000FF', // sand (2)
+  'D3D3D3', // wetland (3)
+  '0000FF', // urban (4)
+  'D3D3D3', // coppice (5)
+  '0000FF', // mangrove (6)
+  '008000', //  casuarina (7)
+  '000fff'// water(8)
+];
+
+// Display the classification result and the input image.
+
+Map.addLayer(classified, {min: 0, max: 2, palette: palette}, 'Land Use Classification');
